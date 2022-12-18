@@ -16,7 +16,9 @@
          (struct-out measured)
          measured/c
          unit/c
+         base-unit/c
          dimension/c
+         base-dimension/c
          (contract-out
           [measured-* (->* () #:rest (listof measured/c) measured/c)]
           [unit-* (->* () #:rest (listof unit/c) unit/c)]
@@ -47,11 +49,12 @@
 (struct dimension [maybe-name maybe-shortname bases] #:transparent)
 ; A Dimension is a
 #;(dimension (or/c #f string?) (or/c #f string?) (Product BaseDimension))
+; or a BaseDimension
 ; Represents a physical dimension of measurement.
 ; Examples:
 (define speed (dimension "speed" #f (hasheq L 1 T -1)))
 (define empty-dimension (dimension #f #f (hasheq)))
-(define dimension/c (struct/c dimension (or/c #f string?) (or/c #f string?) (product/c base-dimension/c)))
+(define dimension/c (or/c base-dimension/c (struct/c dimension (or/c #f string?) (or/c #f string?) (product/c base-dimension/c))))
 
 (struct base-unit [name shortname dimension] #:transparent)
 ; A BaseUnit is a
@@ -67,11 +70,12 @@
 (struct unit [maybe-name maybe-shortname bases] #:transparent)
 ; A Unit is a
 #;(unit (or/c #f string?) (or/c #f string?) (Product BaseUnit))
+; or a BaseUnit
 ; Represents a physical unit of measurement.
 ; Examples:
 (define m/s (unit "meters per second" #f (hasheq m 1 s -1)))
 (define empty-unit (unit #f #f (hasheq)))
-(define unit/c (struct/c unit (or/c #f string?) (or/c #f string?) (product/c base-unit/c)))
+(define unit/c (or/c base-unit/c (struct/c unit (or/c #f string?) (or/c #f string?) (product/c base-unit/c))))
 
 (struct measured [quantity unit] #:transparent)
 ; A Measured is a
@@ -92,7 +96,14 @@
 #;(Unit ... -> Unit)
 ; multiply the units
 (define (unit-* . units)
-  (unit #f #f (apply product-* (map unit-bases units))))
+  (unit #f #f (apply product-* (map (compose unit-bases base-unit->unit) units))))
+
+#;((or/c BaseUnit Unit) -> Unit)
+; convert a base unit to a unit. leaves units as is
+(define (base-unit->unit bu)
+  (if (unit? bu)
+      bu
+      (unit (base-unit-name bu) (base-unit-shortname bu) (hasheq bu 1))))
 
 #;([Product A] ... -> [Product A])
 ; multiply the products (adds exponents and filters zeroes)
@@ -102,7 +113,14 @@
 #;(Dimension ... -> Dimension)
 ; multiply dimensions
 (define (dimension-* . dims)
-  (dimension #f #f (apply product-* (map dimension-bases dims))))
+  (dimension #f #f (apply product-* (map (dimension-bases base-dimension->dimension) dims))))
+
+#;((or/c BaseDimension Dimension) -> Dimension)
+; convert a base dimension to a dimension. leaves dimensions as is
+(define (base-dimension->dimension bd)
+  (if (dimension? bd)
+      bd
+      (dimension (base-dimension-name bd) (base-dimension-shortname bd) (hasheq bd 1))))
 
 #;([Product A] [Product A])
 ; removes keys with an exponent of zero.
